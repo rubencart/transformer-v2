@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # date: 2018-12-02 11:35
 import copy
+import logging
 import time
 
 import torch.nn as nn
@@ -12,22 +13,24 @@ from .encoder import Encoder
 from .encoder_decoder import EncoderDecoder
 from .encoder_layer import EncoderLayer
 from .generator import Generator
-from .multihead_attention import MultiHeadAttention
-from .pointerwise_feedforward import PointerwiseFeedforward
+from .multiheaded_attention import MultiHeadedAttention
+from .positionwise_feedforward import PositionwiseFeedForward
 from .positional_encoding import PositionalEncoding
 
+logger = logging.getLogger(__name__)
 
-def make_model(src_vocab, tgt_vocab, n=6, d_model=512, d_ff=2048, h=8, dropout=0.1):
+
+def make_model(src_vocab, tgt_vocab, num_layers=6, d_model=512, d_ff=2048, num_heads=8, dropout=0.1):
     """
     Helper: Construct a model from hyperparameters.
     """
     c = copy.deepcopy
-    attn = MultiHeadAttention(h, d_model)
-    ff = PointerwiseFeedforward(d_model, d_ff, dropout)
+    attn = MultiHeadedAttention(num_heads, d_model)
+    ff = PositionwiseFeedForward(d_model, d_ff, dropout)
     position = PositionalEncoding(d_model, dropout)
     model = EncoderDecoder(
-        Encoder(EncoderLayer(d_model, c(attn), c(ff), dropout), n),
-        Decoder(DecoderLayer(d_model, c(attn), c(attn), c(ff), dropout), n),
+        Encoder(EncoderLayer(d_model, c(attn), c(ff), dropout), num_layers),
+        Decoder(DecoderLayer(d_model, c(attn), c(attn), c(ff), dropout), num_layers),
         nn.Sequential(Embeddings(d_model, src_vocab), c(position)),
         nn.Sequential(Embeddings(d_model, tgt_vocab), c(position)),
         Generator(d_model, tgt_vocab)
@@ -58,27 +61,7 @@ def run_epoch(data_iter, model, loss_compute):
         tokens += batch.ntokens
         if i % 50 == 1:
             elapsed = time.time() - start
-            print('Epoch step: %d Loss %f Tokens per Sec: %f' % (i, loss / batch.ntokens, tokens / elapsed))
+            logging.info('Epoch step: %d Loss %f Tokens per Sec: %f' % (i, loss / batch.ntokens, tokens / elapsed))
             start = time.time()
             tokens = 0
     return total_loss / total_tokens
-
-
-max_src_in_batch = 25000
-max_tgt_in_batch = 25000
-
-
-def batch_size_fn(new, count, size_so_far):
-    """
-    Keep augmenting batch and calculate total number of tokens + padding.
-    """
-    global max_src_in_batch
-    global max_tgt_in_batch
-    if count == 1:
-        max_src_in_batch = 0
-        max_tgt_in_batch = 0
-    max_src_in_batch = max(max_src_in_batch, len(new.src))
-    max_tgt_in_batch = max(max_tgt_in_batch, len(new.trg) + 2)
-    src_elements = count * max_src_in_batch
-    tgt_elements = count * max_tgt_in_batch
-    return max(src_elements, tgt_elements)
