@@ -1,14 +1,9 @@
 # -*- coding: utf-8 -*-
 # date: 2018-12-02 21:29
-import logging
-
 import torch
 
 import torch.nn as nn
 from torch.autograd import Variable
-
-
-logger = logging.getLogger(__name__)
 
 
 class MultiGPULossCompute(object):
@@ -18,15 +13,13 @@ class MultiGPULossCompute(object):
 
     def __init__(self, generator, criterion, devices, opt=None, chunk_size=5):
         # Send out to different gpus.
-        self.generator = generator
         self.criterion = criterion
-        self.criteria = [nn.parallel.replicate(criterion, devices=devices[:i+1]) for i in range(len(devices))]
-        self.generators = [nn.parallel.replicate(generator, devices=devices[:i+1]) for i in range(len(devices))]
-        # self.criteria = [None if i < len(devices) - 1 else nn.parallel.replicate(criterion, devices=devices)
-        #                  for i in range(len(devices))]
-        # self.generators = [None if i < len(devices) - 1 else nn.parallel.replicate(generator, devices=devices)
-        #                    for i in range(len(devices))]
-        # self.criterion = nn.parallel.replicate(criterion, devices=devices)
+        self.generator = generator
+        self.criteria = [None for _ in range(len(devices) - 1)] \
+                        + [nn.parallel.replicate(criterion, devices=devices)]
+        self.generators = [None for _ in range(len(devices) - 1)] \
+                          + [nn.parallel.replicate(generator, devices=devices)]
+
         self.opt = opt
         self.devices = devices
         self.chunk_size = chunk_size
@@ -37,17 +30,9 @@ class MultiGPULossCompute(object):
         out_grad = [[] for _ in out_scatter]
         targets = nn.parallel.scatter(target, target_gpus=self.devices)
 
-        # if len(out_scatter) != len(self.devices):
-        #     logger.warning('had to use different amount of GPUs: %s instead of %s'
-        #                    % (len(out_scatter), len(self.devices)))
-        #     self.criteria[len(out_scatter) - 1] = nn.parallel.replicate(self.criterion,
-        #                                                                 devices=self.devices[:len(out_scatter)])
-        #     self.generators[len(out_scatter) - 1] = nn.parallel.replicate(self.generator,
-        #                                                                   devices=self.devices[:len(out_scatter)])
+        self.replicate_modules(len(out_scatter))
         generator = self.generators[len(out_scatter) - 1]
         criterion = self.criteria[len(out_scatter) - 1]
-        # criterion = self.criterion
-        # generator = nn.parallel.replicate(self.generator, devices=self.devices)
 
         # Divide generating into chunks.
         chunk_size = self.chunk_size
@@ -68,7 +53,7 @@ class MultiGPULossCompute(object):
             if l.shape == torch.Size([]):  # handle 1 GPU case
                 total += l.item() / normalize
             else:
-                l = l[0] / normalize  
+                l = l[0] / normalize
                 total += l.data[0]
 
             # Backprop loss to output of transformer
@@ -87,3 +72,10 @@ class MultiGPULossCompute(object):
             self.opt.optimizer.zero_grad()
 
         return total * normalize
+
+    def replicate_modules(self, var_length):
+        if var_length != len(self.devices):
+            idx = var_length - 1
+            if not self.criteria[idx] or not self.generators[idx]:
+                self.criteria[idx] = nn.parallel.replicate(self.criterion, devices=self.devices[:var_length])
+                self.generators[idx] = nn.parallel.replicate(self.generator, devices=self.devices[:var_length])
