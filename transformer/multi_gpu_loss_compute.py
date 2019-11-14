@@ -20,12 +20,13 @@ class MultiGPULossCompute(object):
         # Send out to different gpus.
         self.generator = generator
         self.criterion = criterion
-        # self.criteria = [nn.parallel.replicate(criterion, devices=devices[:i+1]) for i in range(len(devices))]
-        # self.generators = [nn.parallel.replicate(generator, devices=devices[:i+1]) for i in range(len(devices))]
-        self.criteria = [None if i < len(devices) - 1 else nn.parallel.replicate(criterion, devices=devices)
-                         for i in range(len(devices))]
-        self.generators = [None if i < len(devices) - 1 else nn.parallel.replicate(generator, devices=devices)
-                           for i in range(len(devices))]
+        self.criteria = [nn.parallel.replicate(criterion, devices=devices[:i+1]) for i in range(len(devices))]
+        self.generators = [nn.parallel.replicate(generator, devices=devices[:i+1]) for i in range(len(devices))]
+        # self.criteria = [None if i < len(devices) - 1 else nn.parallel.replicate(criterion, devices=devices)
+        #                  for i in range(len(devices))]
+        # self.generators = [None if i < len(devices) - 1 else nn.parallel.replicate(generator, devices=devices)
+        #                    for i in range(len(devices))]
+        # self.criterion = nn.parallel.replicate(criterion, devices=devices)
         self.opt = opt
         self.devices = devices
         self.chunk_size = chunk_size
@@ -36,15 +37,17 @@ class MultiGPULossCompute(object):
         out_grad = [[] for _ in out_scatter]
         targets = nn.parallel.scatter(target, target_gpus=self.devices)
 
-        if len(out_scatter) != len(self.devices):
-            logger.warning('had to use different amount of GPUs: %s instead of %s'
-                           % (len(out_scatter), len(self.devices)))
-            self.criteria[len(out_scatter) - 1] = nn.parallel.replicate(self.criterion,
-                                                                        devices=self.devices[:len(out_scatter)])
-            self.generators[len(out_scatter) - 1] = nn.parallel.replicate(self.generator,
-                                                                          devices=self.devices[:len(out_scatter)])
+        # if len(out_scatter) != len(self.devices):
+        #     logger.warning('had to use different amount of GPUs: %s instead of %s'
+        #                    % (len(out_scatter), len(self.devices)))
+        #     self.criteria[len(out_scatter) - 1] = nn.parallel.replicate(self.criterion,
+        #                                                                 devices=self.devices[:len(out_scatter)])
+        #     self.generators[len(out_scatter) - 1] = nn.parallel.replicate(self.generator,
+        #                                                                   devices=self.devices[:len(out_scatter)])
         generator = self.generators[len(out_scatter) - 1]
         criterion = self.criteria[len(out_scatter) - 1]
+        # criterion = self.criterion
+        # generator = nn.parallel.replicate(self.generator, devices=self.devices)
 
         # Divide generating into chunks.
         chunk_size = self.chunk_size

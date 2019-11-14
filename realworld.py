@@ -70,13 +70,13 @@ TGT.build_vocab(train.trg, min_freq=MIN_FREQ)
 
 logger.info('making iterators')
 # Nb of tokens, not samples
-BATCH_SIZE = 12000
+BATCH_SIZE = 200
 train_iter = MyIterator(train, batch_size=BATCH_SIZE, device=device_objs[0], repeat=False,
                         sort_key=lambda x: (len(x.src), len(x.trg)), batch_size_fn=batch_size_fn, train=True)
 valid_iter = MyIterator(val, batch_size=BATCH_SIZE, device=device_objs[0], repeat=False,
                         sort_key=lambda x: (len(x.src), len(x.trg)), batch_size_fn=batch_size_fn, train=False)
 
-if False:
+if True:
     logger.info('making big model')
     pad_idx = TGT.vocab.stoi[BLANK_WORD]
     model = make_model(len(SRC.vocab), len(TGT.vocab), num_layers=6, num_heads=8, d_model=128, d_ff=512)
@@ -99,7 +99,7 @@ if False:
     logger.info('approx. %s batches per epoch' % num_batches_in_epoch)
     logger.info('number of parameters: {:,}'.format(num_trainable_params))
 
-    for epoch in range(0):
+    for epoch in range(3):
         logger.info('****************************')
         logger.info('********* Epoch %s *********' % epoch)
         model_par.train()
